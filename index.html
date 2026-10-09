@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WAHA Sender — Single Session</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; justify-content: center; padding: 24px 12px; }
+  .wrap { width: 100%; max-width: 520px; display: flex; flex-direction: column; gap: 16px; }
+  h1 { font-size: 20px; text-align: center; }
+  h1 span { color: #25d366; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 16px; }
+  .card h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .05em; color: #94a3b8; margin-bottom: 12px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+  .b-work { background: #14532d; color: #86efac; }
+  .b-qr { background: #713f12; color: #fde68a; }
+  .b-off { background: #3f3f46; color: #d4d4d8; }
+  button { background: #334155; color: #e2e8f0; border: 1px solid #475569; border-radius: 8px; padding: 8px 14px; font-size: 14px; cursor: pointer; }
+  button:hover { background: #475569; }
+  button.primary { background: #25d366; border-color: #25d366; color: #052e16; font-weight: 700; }
+  button.primary:hover { background: #1fb857; }
+  button.danger { background: transparent; border-color: #7f1d1d; color: #fca5a5; }
+  input, textarea { width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; padding: 10px 12px; font-size: 15px; margin-bottom: 10px; }
+  textarea { min-height: 80px; resize: vertical; }
+  label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 4px; }
+  #qr { display: block; margin: 12px auto 0; width: 240px; height: 240px; border-radius: 8px; background: #fff; }
+  .hint { font-size: 13px; color: #94a3b8; margin-top: 8px; text-align: center; }
+  #log { font-family: monospace; font-size: 12px; background: #020617; border-radius: 8px; padding: 10px; max-height: 180px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+  .ok { color: #86efac; } .err { color: #fca5a5; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span>WAHA</span> Sender — one session</h1>
+
+  <div class="card">
+    <h2>Session</h2>
+    <div class="row">
+      <span id="badge" class="badge b-off">…</span>
+      <button onclick="api('POST','/session').then(refresh)">Start</button>
+      <button onclick="api('POST','/session/restart').then(refresh)">Restart</button>
+      <button onclick="api('POST','/session/stop').then(refresh)">Stop</button>
+      <button class="danger" onclick="api('DELETE','/session').then(refresh)">Delete</button>
+      <button onclick="refresh()">↻</button>
+    </div>
+    <img id="qr" style="display:none" alt="Scan with WhatsApp" />
+    <div id="qrhint" class="hint"></div>
+  </div>
+
+  <div class="card">
+    <h2>Send message</h2>
+    <label>Phone number (digits only, with country code)</label>
+    <input id="phone" placeholder="919876543210" inputmode="tel" />
+    <label>Message</label>
+    <textarea id="msg" placeholder="Hello!"></textarea>
+    <button class="primary" onclick="sendMsg()" style="width:100%">Send</button>
+  </div>
+
+  <div class="card">
+    <h2>Log</h2>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+function log(msg, cls) {
+  const el = document.createElement('div');
+  if (cls) el.className = cls;
+  el.textContent = (cls === 'err' ? '✗ ' : '✓ ') + msg;
+  $('log').prepend(el);
+}
+async function api(method, path, body) {
+  const r = await fetch(path, { method, headers: {'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok && !j.ok) log(`${method} ${path} → ${j.error || r.status}`, 'err');
+  return j;
+}
+async function refresh() {
+  try {
+    const s = await api('GET', '/session');
+    const b = $('badge');
+    b.textContent = s.exists ? s.status : 'NO SESSION';
+    b.className = 'badge ' + (s.working ? 'b-work' : s.needsQr ? 'b-qr' : 'b-off');
+    const qr = $('qr'), hint = $('qrhint');
+    if (s.needsQr) {
+      qr.src = '/session/qr?format=image&t=' + Date.now();
+      qr.style.display = 'block';
+      hint.textContent = 'Scan with WhatsApp → Linked devices → Link a device';
+    } else {
+      qr.style.display = 'none';
+      hint.textContent = s.working ? 'Connected ✓ — you can send messages' : (s.exists ? 'Waiting… auto-refreshing' : 'Press Start to create the session');
+    }
+    return s;
+  } catch (e) { log('refresh failed: ' + e.message, 'err'); }
+}
+async function sendMsg() {
+  const phone = $('phone').value.trim(), message = $('msg').value.trim();
+  if (!phone || !message) return log('Enter phone + message', 'err');
+  const j = await api('POST', '/send', { phone, message });
+  if (j.ok) { log(`Sent to ${j.chatId}`); $('msg').value = ''; }
+  else if (j.error) log(j.error, 'err');
+}
+refresh();
+setInterval(async () => {
+  const b = $('badge').textContent;
+  if (b !== 'WORKING') refresh();
+}, 3000);
+</script>
+</body>
+</html>

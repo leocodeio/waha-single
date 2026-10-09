@@ -1,0 +1,24 @@
+services:
+  waha:
+    image: devlikeapro/waha:latest
+    env_file: .env
+    volumes:
+      - waha-sessions:/app/.sessions
+    ports:
+      - "${WAHA_PORT:-3000}:3000"
+    restart: unless-stopped
+
+  app:
+    build: .
+    env_file: .env
+    environment:
+      WAHA_URL: http://waha:3000
+      PORT: 3102
+    ports:
+      - "${APP_PORT:-3102}:3102"
+    depends_on:
+      - waha
+    restart: unless-stopped
+
+volumes:
+  waha-sessions:
