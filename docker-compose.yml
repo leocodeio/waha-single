@@ -5,17 +5,17 @@ services:
     volumes:
       - waha-sessions:/app/.sessions
     ports:
-      - "${WAHA_PORT:-3000}:3000"
+      - "127.0.0.1:${WAHA_PORT:-3000}:3000"
     restart: unless-stopped
 
   app:
-    build: .
+    image: "${APP_IMAGE}"
     env_file: .env
     environment:
       WAHA_URL: http://waha:3000
       PORT: 3102
     ports:
-      - "${APP_PORT:-3102}:3102"
+      - "127.0.0.1:${APP_PORT:-4000}:3102"
     depends_on:
       - waha
     restart: unless-stopped
